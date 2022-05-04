@@ -68,7 +68,7 @@ class Integers(Group):
 		if type(identifier) is not int:
 			raise TypeError("Expected integer value.")
 		return IntegersElement(identifier, self)
-	def subgroup_normal(self, subgroup, parent_group = self):
+	def subgroup_normal(self, subgroup):
 		if not issubclass(type(subgroup), Group) or subgroup.parent is not self:
 			raise TypeError("Expected subgroup.")
 		return True
@@ -77,7 +77,8 @@ class Integers(Group):
 			raise TypeError("Expected group element.")
 		if not issubclass(type(subgroup), Group) or subgroup.parent is not self:
 			raise TypeError("Expected subgroup.")
-		single_generator = math.gcd(*subgroup.generators)
+		single_generator = math.gcd(*[generator.value for generator in subgroup.original_generators])
+		return element.value%single_generator == 0
 	def __repr__(self):
 		return "Integers()"
 
@@ -107,7 +108,7 @@ class SubgroupElement(GroupElement):
 		return str(self.value)
 
 class Subgroup(Group):
-	def __init__(self, parent, generators):
+	def __init__(self, generators, parent):
 		if not issubclass(type(parent), Group):
 			raise TypeError("Expected group.")
 		for generator in generators:
@@ -121,8 +122,22 @@ class Subgroup(Group):
 		if type(identifier) is not int:
 			raise TypeError("Expected integer value.")
 		return self.generators[identifier]
+	def subgroup_normal(self, subgroup):
+		if not issubclass(type(subgroup), Group) or subgroup.parent is not self:
+			raise TypeError("Expected subgroup.")
+		parent_generators = self.original_generators + [generator.value for generator in subgroup.original_generators]
+		new_subgroup = Subgroup(parent_generators, self.parent)
+		return self.parent.subgroup_normal(new_subgroup)
+	def subgroup_member(self, element, subgroup):
+		if not issubclass(type(element), GroupElement) or element.group is not self:
+			raise TypeError("Expected group element.")
+		if not issubclass(type(subgroup), Group) or subgroup.parent is not self:
+			raise TypeError("Expected subgroup.")
+		parent_generators = [generator.value for generator in subgroup.original_generators]
+		new_subgroup = Subgroup(parent_generators, self.parent)
+		return self.parent.subgroup_member(element.value, new_subgroup)
 	def __repr__(self):
-		return "Subgroup(%s, %s)"%(repr(self.parent), repr(self.original_generators))
+		return "Subgroup(%s, %s)"%(repr(self.original_generators), repr(self.parent))
 
 class QuotientElement(GroupElement):
 	def __init__(self, representative, quotient):
@@ -137,7 +152,7 @@ class QuotientElement(GroupElement):
 			raise TypeError("Expected quotient element.")
 		if x.group != self.group:
 			raise TypeError("Group elements do not belong to the same group.")
-		return QuotientElement(self.value*x, self.group)
+		return QuotientElement(self.value*x.value, self.group)
 	def __eq__(self, x):
 		if type(x) is not QuotientElement:
 			raise TypeError("Expected quotient element.")
@@ -145,6 +160,23 @@ class QuotientElement(GroupElement):
 			raise TypeError("Group elements do not belong to the same group.")
 		return self.group.dividend.subgroup_member((self*-x).value, self.group.divisor)
 	def __repr__(self):
-		return "QuotientElement(%s, %s)"%(repr(representative), repr(quotient))
+		return "QuotientElement(%s, %s)"%(repr(self.value), repr(self.group))
 	def __str__(self):
-		return str(representative)
+		return str(self.value)
+
+class Quotient(Group):
+	def __init__(self, dividend, divisor):
+		if not issubclass(type(dividend), Group):
+			raise TypeError("Expected group.")
+		if not issubclass(type(divisor), Group) or divisor.parent is not dividend:
+			raise TypeError("Expected normal subgroup.")
+		if not dividend.subgroup_normal(divisor):
+			raise TypeError("Subgroup is not normal.")
+		self.parent = None
+		self.dividend = dividend
+		self.divisor = divisor
+		self.identity = QuotientElement(self.dividend.identity, self)
+	def element(self, identifier):
+		return QuotientElement(self.dividend.element(identifier), self)
+	def __repr__(self):
+		return "Quotient(%s, %s)"%(repr(self.dividend), repr(self.divisor))
